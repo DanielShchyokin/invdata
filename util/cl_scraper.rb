@@ -20,7 +20,8 @@ module CRAIGS_LIST_SCRAPER
 
   def fetch_rentals_page(conn, page = 0)
     path =  "/search/apa"
-    path = path.concat("apa?s=#{120*page}") unless page == 0
+    offset = 120 * page
+    path = path.concat("?s=#{offset.to_s}") unless page == 0
     response = conn.get path
     page = Nokogiri::HTML(response.body)
   end
@@ -95,22 +96,32 @@ module CRAIGS_LIST_SCRAPER
      ad['tags'] = tags page, city, state, hood, link
     ad = ad.merge(address(page, city, state, hood, link))
     ad = ad.merge(bbsqft(page, city, state, hood, link))
+    puts link
+    sleep 5
+  end
+
+  def run_cl_scraper(pages,city, state)
+    conn = connect_to_cl(city)
+    ad_data = []
+    pages.each do |pg|
+      binding.pry
+      page = fetch_rentals_page(conn,pg)
+      ad_list = scrape_link_data_from_apartment_search_page page
+      ad_list.each do |ad_ref|
+        page = fetch_apartment_ad_page ad_ref[:link]
+        tmp = scrape_data_from_apartment_ad page,city, state, ad_ref['hood'], ad_ref[:link]
+        ad_data << tmp unless tmp.nil?
+      end
+    end
+    ad_data
   end
 end
 
 include CRAIGS_LIST_SCRAPER
 city="columbus"
 state = "ohio"
-conn = connect_to_cl city
-page = fetch_rentals_page conn
-ad_list = scrape_link_data_from_apartment_search_page page
-ad_data = []
-ad_list.each do |ad_ref|
-  page = fetch_apartment_ad_page ad_ref[:link]
-  tmp = scrape_data_from_apartment_ad page,city, state, ad_ref['hood'], ad_ref[:link]
-  ad_data << tmp unless tmp.nil?
-end
-binding.pry
+pages = 0...9
+ad_data = run_cl_scraper(pages,city,state)
 t = Time.now
 csv_filename = "#{city}_#{state}_cl_rental_data_for#{t.strftime("%Y-%m-%d")}"
 CSV.open(csv_filename, "wb") do |csv|
